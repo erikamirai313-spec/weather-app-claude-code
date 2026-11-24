@@ -37,7 +37,7 @@ export default function Calendar({ today, available, selected, onSelect }: Props
   ];
 
   return (
-    <div className="w-full max-w-sm rounded-2xl bg-white/70 p-4 shadow-sm ring-1 ring-black/5 dark:bg-white/5 dark:ring-white/10">
+    <div className="w-full min-w-0 rounded-2xl bg-white/70 p-4 shadow-sm ring-1 ring-black/5 dark:bg-white/5 dark:ring-white/10">
       <div className="mb-2 flex items-center justify-between">
         <button
           type="button"
@@ -48,7 +48,7 @@ export default function Calendar({ today, available, selected, onSelect }: Props
         >
           ‹
         </button>
-        <div className="font-semibold">
+        <div className="whitespace-nowrap font-semibold">
           {year}年{month + 1}月
         </div>
         <button
@@ -61,7 +61,7 @@ export default function Calendar({ today, available, selected, onSelect }: Props
           ›
         </button>
       </div>
-      <div className="grid grid-cols-7 gap-1 text-center text-sm">
+      <div className="grid grid-cols-[repeat(7,minmax(0,1fr))] gap-1 text-center text-sm">
         {WEEK.map((w, i) => (
           <div
             key={w}

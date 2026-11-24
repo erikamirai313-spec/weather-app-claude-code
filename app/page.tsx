@@ -102,7 +102,7 @@ export default function Home() {
       {loading && <p className="text-sm opacity-60">読み込み中…</p>}
 
       {data && day && (
-        <div className="grid gap-6 md:grid-cols-[auto_1fr]">
+        <div className="grid gap-6 md:grid-cols-[20rem_minmax(0,1fr)] md:items-start">
           <Calendar
             today={data.today}
             available={data.days.map((d) => d.date)}
@@ -110,7 +110,7 @@ export default function Home() {
             onSelect={setSelected}
           />
 
-          <section className="rounded-2xl bg-white/70 p-6 shadow-sm ring-1 ring-black/5 dark:bg-white/5 dark:ring-white/10">
+          <section className="min-w-0 rounded-2xl bg-white/70 p-6 shadow-sm ring-1 ring-black/5 dark:bg-white/5 dark:ring-white/10">
             <p className="text-sm opacity-60">
               {data.city}（{data.country}）・{formatDate(day.date)}
               {isToday && "・今日"}
@@ -139,7 +139,7 @@ export default function Home() {
               {day.hourly.map((h) => (
                 <li
                   key={h.time}
-                  className="flex min-w-16 flex-col items-center rounded-xl bg-black/5 px-2 py-2 text-xs dark:bg-white/10"
+                  className="flex min-w-16 shrink-0 flex-col items-center rounded-xl bg-black/5 px-2 py-2 text-xs dark:bg-white/10"
                 >
                   <span className="opacity-60">{h.time}</span>
                   {/* eslint-disable-next-line @next/next/no-img-element */}
