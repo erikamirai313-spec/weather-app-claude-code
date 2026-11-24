@@ -27,6 +27,8 @@ export type CurrentWeather = {
 export type WeatherResponse = {
   city: string;
   country: string;
+  lat: number;
+  lon: number;
   today: string; // 現地の今日 "YYYY-MM-DD"
   current: CurrentWeather;
   days: DayForecast[]; // 選択可能な日（今日〜）
