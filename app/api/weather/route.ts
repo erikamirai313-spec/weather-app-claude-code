@@ -2,6 +2,7 @@ import type { NextRequest } from "next/server";
 import type { DayForecast, WeatherResponse } from "@/lib/types";
 
 const BASE = "https://api.openweathermap.org/data/2.5";
+const BASE_GEO = "https://api.openweathermap.org/geo/1.0";
 const MAX_DAYS = 6; // 今日 + 5日先
 
 type OwmWeather = { description: string; icon: string };
@@ -23,6 +24,58 @@ type OwmForecast = {
   city: { name: string; country: string; timezone: number };
   list: OwmForecastItem[];
 };
+
+type GeoResult = {
+  name: string;
+  local_names?: { ja?: string };
+  lat: number;
+  lon: number;
+  country: string;
+};
+
+const geoName = (g: GeoResult) => g.local_names?.ja || g.name;
+
+async function geocode(q: string, apiKey: string): Promise<GeoResult[]> {
+  const params = new URLSearchParams({ q, limit: "5", appid: apiKey });
+  const res = await fetch(`${BASE_GEO}/direct?${params}`, { cache: "no-store" });
+  if (res.status === 401) throw new Error("API キーが無効です（有効化まで数時間かかる場合があります）。");
+  if (res.status === 429) throw new Error("API の呼び出し回数の上限に達しました。");
+  if (!res.ok) throw new Error("都市の検索に失敗しました。");
+  return res.json();
+}
+
+// 「横浜」のように接尾辞のない日本語は、市・区・都の付いた名前を先に試す
+// （そのまま検索すると同名の小さな地名が先に当たるため）
+async function findCity(q: string, apiKey: string): Promise<GeoResult | null> {
+  const hasJa = /[\u3040-\u30ff\u3400-\u9fff]/.test(q);
+  const suffixed = hasJa && !/[市区町村]$/.test(q);
+  const candidates = suffixed ? [`${q}市`, `${q}区`, `${q}都`, q] : [q];
+  const results = await Promise.all(candidates.map((c) => geocode(c, apiKey)));
+  for (const [i, list] of results.entries()) {
+    if (!list.length) continue;
+    if (suffixed && i < candidates.length - 1) {
+      // 「渋谷市」のような存在しない名前はあいまい一致で別の地名が返るため、名前が一致したものだけ採用
+      const hit = list.find((g) => g.local_names?.ja === candidates[i] || g.name === candidates[i]);
+      if (hit) return hit;
+      continue;
+    }
+    // 素の検索は日本語名のある結果を優先
+    return list.find((g) => g.local_names?.ja) || list[0];
+  }
+  return null;
+}
+
+async function reverseName(lat: string, lon: string, apiKey: string) {
+  try {
+    const params = new URLSearchParams({ lat, lon, limit: "1", appid: apiKey });
+    const res = await fetch(`${BASE_GEO}/reverse?${params}`, { cache: "no-store" });
+    if (!res.ok) return null;
+    const [g]: GeoResult[] = await res.json();
+    return g ? geoName(g) : null;
+  } catch {
+    return null;
+  }
+}
 
 function json(body: unknown, status = 200) {
   return Response.json(body, { status, headers: { "Cache-Control": "no-store" } });
@@ -55,14 +108,29 @@ export async function GET(request: NextRequest) {
   const lon = sp.get("lon");
 
   const params = new URLSearchParams({ units: "metric", lang: "ja", appid: apiKey });
+  let cityName = sp.get("name")?.trim() || null; // お気に入りなど、表示名が分かっている場合
+  let geoCountry: string | null = sp.get("country")?.trim() || null;
+  let latStr: string, lonStr: string;
   if (q) {
-    params.set("q", q);
+    let city: GeoResult | null;
+    try {
+      city = await findCity(q, apiKey);
+    } catch (e) {
+      return json({ error: e instanceof Error ? e.message : "都市の検索に失敗しました。" }, 502);
+    }
+    if (!city) return json({ error: "都市が見つかりませんでした。" }, 404);
+    cityName = geoName(city);
+    geoCountry = city.country;
+    latStr = String(city.lat);
+    lonStr = String(city.lon);
   } else if (lat !== null && lon !== null && Number.isFinite(+lat) && Number.isFinite(+lon)) {
-    params.set("lat", lat);
-    params.set("lon", lon);
+    latStr = lat;
+    lonStr = lon;
   } else {
     return json({ error: "都市名または緯度・経度を指定してください。" }, 400);
   }
+  params.set("lat", latStr);
+  params.set("lon", lonStr);
 
   let curRes: Response, fcRes: Response;
   try {
@@ -82,6 +150,7 @@ export async function GET(request: NextRequest) {
     if (!res.ok) return json({ error: "天気情報の取得に失敗しました。" }, 502);
   }
 
+  if (!cityName) cityName = await reverseName(latStr, lonStr, apiKey);
   const cur: OwmCurrent = await curRes.json();
   const fc: OwmForecast = await fcRes.json();
   const tz = fc.city.timezone;
@@ -129,8 +198,10 @@ export async function GET(request: NextRequest) {
     });
 
   const body: WeatherResponse = {
-    city: cur.name || fc.city.name,
-    country: cur.sys.country || fc.city.country,
+    city: cityName || cur.name || fc.city.name,
+    country: geoCountry || cur.sys.country || fc.city.country,
+    lat: +latStr,
+    lon: +lonStr,
     today,
     current: {
       temp: Math.round(cur.main.temp),
